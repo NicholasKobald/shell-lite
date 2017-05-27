@@ -26,31 +26,44 @@ void print_default_dirs(char default_directories[max_directory_len][max_director
 int read_default_dirs(FILE *fp, char default_directories[max_directory_len][max_directory_string_len]);
 void print_tokens(char tokens[max_args][max_line_length], int num_tokens);
 int find_command(char default_directories[max_directory_len][max_directory_string_len], char tokenized_string[max_args][max_line_length]);
-int  execute_command(char **args);
+int  execute_command(char **args, int num_tokens);
+void populate_exec_args(char** args, char tokens[max_args][max_line_length], int num_tokens);
+void print_args(char **args, int num_tokens);
+void strip_newline(char current_command_string[max_line_length]);
 
 int main() {
     FILE *fp;
     fp = fopen(".uvshr", "r");
     char default_directories[max_directory_len][max_directory_string_len];
     char prompt[max_prompt_length];
+    int num_tokens;
 
     load_prompt(fp, prompt);
     read_default_dirs(fp, default_directories);
 
     char current_command_string[max_line_length];
     char tokenized_string[max_args][max_line_length];
+    char *exec_args[max_args]; //need both cuz reasons.
 
     //main loop
     for(;;) {
         init(current_command_string, tokenized_string);
         printf("%s", prompt);
         fgets(current_command_string, max_line_length, stdin);
-        tokenize_command_string(current_command_string, tokenized_string);
-        printf("Calling execute command");
+        strip_newline(current_command_string);
+        num_tokens = tokenize_command_string(current_command_string, tokenized_string);
+        populate_exec_args(exec_args, tokenized_string, num_tokens);
+        execute_command(exec_args, num_tokens);
+        fflush(stdout);
+    }
+}
 
-        //execute_command(tokenize_command_string);
-        printf("Fin.");
-
+void strip_newline(char current_command_string[max_line_length]) {
+    int i;
+    for (i = 0; i < max_line_length; i++) {
+        if (current_command_string[i] == '\n') {
+            current_command_string[i] = '\0';
+        }
     }
 }
 
@@ -66,6 +79,21 @@ int read_default_dirs(FILE *fp, char default_directories[max_directory_len][max_
     while(fgets(default_directories[count++], max_directory_string_len, fp) != NULL) {}
     //print_default_dirs(default_directories, count);
     return count;
+}
+
+void populate_exec_args(char** args, char tokens[max_args][max_line_length], int num_tokens) {
+    int i;
+    for (i = 0; i < num_tokens; i++) {
+        args[i] = tokens[i];
+    }
+    args[i] = '\0';
+
+    /*
+    printf("Printing string.\n");
+    for (i = 0; i < num_tokens; i++) {
+        printf("%s", args[i]);
+        printf("\n");
+    } */
 }
 
 void init(char ccs[max_line_length], char ts[max_args][max_line_length]) {
@@ -109,26 +137,56 @@ int tokenize_command_string(char str[max_line_length], char tokenized[max_args][
     return current_token;
 }
 
+void print_args(char **args, int num_tokens) {
+    int i;
+    printf("First arg is: %s\n", args[0]);
+    printf("Printing Arguements: ");
+    for (i = 0; i < num_tokens; i++) {
+        printf("%s\n", args[i]);
+    }
+    printf("---done\n");
+}
+
 /*
  * original author Amanda Chase
  * Adapted for use in this assignment.
  */
-int  execute_command(char **args) {
-     pid_t pid;
-     int status;
+int  execute_command(char *args[], int num_tokens) {
+    pid_t pid;
+    int status;
+    print_args(args, num_tokens);
+    char *envp[] = {0};
+    char *test_args[] = {"/bin/ls", "-l", 0};
+    printf("Test args look like this:\n");
+    int i;
+    int count = 0;
+    for(i = 0; test_args[i] != '\0'; i++) {
+        count++;
+        printf("%s\n", test_args[i]);
+    }
+    printf("Looped %d times.\n", count);
+    count = 0;
+    printf("args look like this:\n");
+    for(i = 0; args[i] != '\0'; i++) {
+        count++;
+        printf("%s\n", args[i]);
+    }
+    printf("Looped %d time\n", count);
+    printf("Fin testing.");
+    if ((pid = fork()) == 0) {
+        printf("Childs starting.\n");
+        execve(args[0], args, envp);
+        printf("This shouldn't happen\n");
+    }
 
-     if ((pid = fork()) < 0) {
-          fprintf(stderr, "*** ERROR: forking child process failed\n");
-          return -1;
-     } else if (pid == 0 && execve(*args, args, '\0') < 0) {
-           fprintf(stderr, "*** ERROR: exec failed\n");
-           return -1;
-     } else {
-          while (wait(&status) != pid);
-     }
+    printf("Waiting for child (this is parent)");
+    while (wait(&status) > 0) {
+        printf("Was maybe a success.");
+    }
 
 
-     return 0;
+
+    return 0;
 }
 
 void print_tokens(char tokens[max_args][max_line_length], int num_tokens) {
