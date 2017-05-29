@@ -1,0 +1,10 @@
+-rw------- 1 nickk nickk    68 May 28 20:40 out_one.txt
+-rw------- 1 nickk nickk   586 May 28 22:07 out_test
+-rw------- 1 nickk nickk     0 May 28 22:07 out_test.txt
+-rw------- 1 nickk nickk    68 May 28 20:26 out_two.txt
+-rw-rw-r-- 1 nickk nickk  1839 May 28 18:53 pipe_ex.c
+-rwxrwxr-x 1 nickk nickk  8827 May 28 18:56 test
+-rw------- 1 nickk nickk    56 May 28 20:39 test.txt
+-rwxrwxr-x 1 nickk nickk 18842 May 28 22:05 uvs
+-rw-rw-r-- 1 nickk nickk 14320 May 28 22:05 uvshr.c
+-rw-rw-r-- 1 nickk nickk   533 May 28 21:37 wc

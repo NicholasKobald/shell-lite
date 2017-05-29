@@ -1,0 +1,10 @@
+o.txt
+out.txt
+out_two.txt
+pipe_ex.c
+test
+uvs
+uvshr.c
+uvsr
+vs
+wc.txt
