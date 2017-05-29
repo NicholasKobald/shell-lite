@@ -4,9 +4,11 @@
 * @Email:  nick.kobald@gmail.com
 *
 * TODO:
-*      -More error checking
+*      -NEXT: Fix filenames (including .uvsrc) 
+*      -need to be printing error to stderr
 *      -all my execute_command functions need to do some error checking
 *      -extra work??
+*           background process?
 */
 
 #include <stdio.h>
@@ -18,13 +20,11 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
-
 #define max_args 10 //well, 9, but we're tokenizing the command itself
 #define max_line_length 80
 #define max_prompt_length 10
 #define max_directory_len 10
 #define max_directory_string_len 100
-
 
 /* File IO */
 int read_default_dirs(FILE *fp, char default_directories[max_directory_len][max_directory_string_len]);
@@ -34,6 +34,7 @@ int load_prompt(FILE *fp, char prefix[10]);
 void print_args(char **args, int num_tokens);
 void print_default_dirs(char default_directories[max_directory_len][max_directory_string_len], int count);
 void print_tokens(char tokens[max_args][max_line_length], int num_tokens);
+void print_variable_args(char *args[]);
 
 /* String logic and house keeping */
 int validate_tokens(char tokens[max_args][max_line_length], int num_tokens);
@@ -48,7 +49,7 @@ int check_command_type(char* args[]);
 int execute_command(char **args);
 int complete_local_path( char *args[max_args], char completed_path[max_line_length]);
 int complete_home_path(char *args[max_args], char completed_path[max_line_length]);
-void handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], int cmd_type, int num_dir);
+void handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], char completed_path[max_line_length],  int cmd_type, int num_dir);
 
 int execute_vanilla_command(char *args[]);
 int execute_do_out_command(char *args[]);
@@ -62,11 +63,8 @@ typedef enum {
 
 control_flag current_control_flag = DEFAULT;
 
-/*
- * This is a nightmare, but we can remember where our cut is w/
- *  a global variable
- */
 int PIPE_INDEX = -1;
+
 
 int main() {
     FILE *fp;
@@ -80,6 +78,8 @@ int main() {
     char current_command_string[max_line_length];
     char tokenized_string[max_args][max_line_length];
     char *exec_args[max_args];
+    char completed_path[max_line_length];
+    char completed_path_target[max_line_length];
 
 	int command_type;
     int num_tokens;
@@ -89,12 +89,16 @@ int main() {
         printf("%s", prompt);
         fgets(current_command_string, max_line_length, stdin);
         strip_newline(current_command_string);
-        num_tokens = tokenize_command_string(current_command_string, tokenized_string);//TODO: Make this an int functionring(current_command_string, tokenized_string);
+        num_tokens = tokenize_command_string(current_command_string, tokenized_string);
 
         if (num_tokens > 0 && populate_exec_args(exec_args, tokenized_string, num_tokens) == 1) {
-         //   print_args(exec_args, num_tokens);
             command_type = check_command_type(exec_args);
-            handle_command(exec_args, default_directories, command_type, num_directories);
+            handle_command(exec_args, default_directories, completed_path,  command_type, num_directories);
+            if (current_control_flag != DEFAULT) {
+                command_type = check_command_type(&exec_args[PIPE_INDEX + 1]);
+                handle_command(&exec_args[PIPE_INDEX + 1], default_directories, completed_path_target, command_type,  num_directories);
+            }
+            execute_command(exec_args);
         }
     }
 }
@@ -105,44 +109,29 @@ int main() {
  *       @param cmd_type - int value specifying how to determine where the executable is.
  *               see function 'check command type'.
  */
-void handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], int cmd_type, int num_dir)  {
-    //printf("Dealing with command of type: %d.\n", cmd_type);
-   // printf("Our pipe symbol is at location: %d.\n", PIPE_INDEX);
-
-
+void handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], char completed_path[max_line_length], int cmd_type, int num_dir)  {
     if (cmd_type == -1) {
         exit(EXIT_SUCCESS);
     }
-
     //abs path case
     if (cmd_type == 0) {
-        execute_command(args);
         return;
     }
-
     //local directory case
     if (cmd_type == 1) {
-        char completed_path[max_line_length];
         if (complete_local_path(args, completed_path) == 1) {
-            execute_command(args);
             return;
         }
     }
-
     //home '~' case.
     if (cmd_type == 2) {
-        char completed_path[max_line_length];
         if (complete_home_path(args, completed_path) == 1) {
-            execute_command(args);
             return;
         }
     }
-
     //inferred path case (look in directories)
     if (cmd_type == 3) {
-        char candidate_path[max_line_length];
-        if (find_command(args, default_directories, candidate_path, num_dir) == 1) {
-            execute_command(args);
+        if (find_command(args, default_directories, completed_path, num_dir) == 1) {
             return;
         }
     }
@@ -284,7 +273,7 @@ int populate_exec_args(char** args, char tokens[max_args][max_line_length], int 
             PIPE_INDEX = i - start;
         }
     }
-    args[i] = '\0';
+    args[i - start] = '\0';
     return 1;
 }
 
@@ -360,7 +349,7 @@ int tokenize_command_string(char str[max_line_length], char tokenized[max_args][
 void print_args(char **args, int num_tokens) {
     int i;
     printf("\n====Printing Args:====\n");
-    printf("Index split at:%d\n", PIPE_INDEX); 
+    printf("Index split at:%d\n", PIPE_INDEX);
     for (i = 0; i < num_tokens; i++) {
         printf("ArgNo. %d||%s\n", i, args[i]);
     }
@@ -379,13 +368,12 @@ int execute_vanilla_command(char *args[]) {
     return 0;
 }
 
-//TODO: understand how this works.
 int execute_do_out_command(char *args[]) {
     char *envp[] = {0};
     int pid, fd;
     int status;
     if ((pid = fork()) == 0) {
-        fd = open(args[PIPE_INDEX + 1] , O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
+        fd = open(args[PIPE_INDEX + 1] , O_CREAT|O_RDWR|O_TRUNC, S_IRUSR|S_IWUSR);
         if (fd == -1) {
             fprintf(stderr, "Unable to open %s for writing.\n", args[PIPE_INDEX + 1]);
             return 0;
@@ -400,8 +388,35 @@ int execute_do_out_command(char *args[]) {
 }
 
 int execute_do_pipe_command(char *args[]) {
-    printf("Not implemented yet");
-    return 0;
+    args[PIPE_INDEX] = '\0';
+   // print_variable_args(args);
+   // print_variable_args(&args[PIPE_INDEX + 1]);
+
+
+    char *envp[] = {0};
+    int pid_head, pid_tail, status;
+    int fd[2];
+
+    pipe(fd);
+
+    if ((pid_head = fork()) == 0) {
+        dup2(fd[1], 1);
+        close(fd[0]);
+        execve(args[0], args, envp);
+    }
+
+    if ((pid_tail = fork()) == 0) {
+        dup2(fd[0], 0);
+        close(fd[1]);
+        execve(args[PIPE_INDEX + 1], &args[PIPE_INDEX + 1], envp);
+    }
+
+    close(fd[0]);
+    close(fd[1]);
+    waitpid(pid_head, &status, 0);
+    waitpid(pid_tail, &status, 0);
+
+    return 1;
 }
 
 int  execute_command(char *args[]) {
@@ -442,4 +457,13 @@ int load_prompt(FILE *fp, char prefix[max_prompt_length]) {
 	if (fgets(prefix, 10, fp)==NULL) return 0;
     prefix[strlen(prefix)-1] = '\0';
     return 1;
+}
+
+void print_variable_args(char *args[]) {
+    int i;
+    printf("\n===begin Printing Args.====\n");
+    for (i = 0; args[i] != '\0'; i++) {
+        printf("ArgNo. %d: %s\n", i, args[i]);
+    }
+    printf("============\n");
 }
