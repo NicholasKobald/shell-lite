@@ -4,11 +4,9 @@
 * @Email:  nick.kobald@gmail.com
 *
 * TODO:
-*       -fix bug with variable number of args
-*       -allow recursive uvshr.c calls
-*       -try not to cry
-*       -fix whitespace bug
-*       -cry a lot
+*      -More error checking
+*      -all my execute_command functions need to do some error checking
+*      -extra work??
 */
 
 #include <stdio.h>
@@ -18,6 +16,8 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <fcntl.h>
+
 
 #define max_args 10 //well, 9, but we're tokenizing the command itself
 #define max_line_length 80
@@ -50,7 +50,9 @@ int complete_local_path( char *args[max_args], char completed_path[max_line_leng
 int complete_home_path(char *args[max_args], char completed_path[max_line_length]);
 void handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], int cmd_type, int num_dir);
 
-
+int execute_vanilla_command(char *args[]);
+int execute_do_out_command(char *args[]);
+int execute_do_pipe_command(char *args[]);
 
 typedef enum {
     DEFAULT,
@@ -82,7 +84,7 @@ int main() {
 	int command_type;
     int num_tokens;
 
-    for(;;) {
+    for (;;) {
         init(current_command_string, tokenized_string);
         printf("%s", prompt);
         fgets(current_command_string, max_line_length, stdin);
@@ -97,7 +99,7 @@ int main() {
     }
 }
 
-/*
+/*printf("%d",
  *   The intention of this function is to handle the logic of getting to the right executable, and executing it.
  *       @param args - array of arrays, each array is an arguement to the executable, with the first one being the name of the executeable itself.
  *       @param default_directories - default directories to look for a command in
@@ -107,7 +109,6 @@ int main() {
 void handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], int cmd_type, int num_dir)  {
     printf("Dealing with command of type: %d.\n", cmd_type);
     printf("Our pipe symbol is at location: %d.\n", PIPE_INDEX);
-
 
 
     if (cmd_type == -1) {
@@ -319,7 +320,6 @@ int validate_tokens(char tokens[max_args][max_line_length], int num_tokens) {
     return 1;
 }
 
-
 void init(char ccs[max_line_length], char ts[max_args][max_line_length]) {
     int i, j;
     PIPE_INDEX = -1;
@@ -374,24 +374,76 @@ void print_args(char **args, int num_tokens) {
 int execute_vanilla_command(char *args[]) {
     pid_t pid;
     int status;
-    //print_args(args, 1);
     char *envp[] = {0};
-    //char *test_args[] = {"/bin/ls", "-l", 0};
-
     if ((pid = fork()) == 0) {
-        printf("%d", execve(args[0], args, envp));
+        execve(args[0], args, envp);
         exit(EXIT_FAILURE);
     }
-    //printf("Waiting for child..");
-    while (wait(&status) > 0) {
-        //printf("Was maybe a success.");
-    }
-
+    wait(&status);
     return 0;
 }
 
-int  execute_command(char *args[]) {
+//TODO: understand how this works.
+int execute_do_out_command(char *args[]) {;
+    char *envp[] = {0};
+    int pid, fd;
+    int status;
+    if ((pid = fork()) == 0) {
+        fd = open(args[PIPE_INDEX + 1] , O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
+        if (fd == -1) {
+            fprintf(stderr, "Unable to open %s for writing.\n", args[PIPE_INDEX + 1]);
+            return 0;
+        }
+        dup2(fd, 1);
+        dup2(fd, 2);
+        args[PIPE_INDEX] = '\0';
+        execve(args[0], args, envp);
+    }
+    waitpid(pid, &status, 0);
+    return 1;
+}
 
+int execute_do_pipe_command(char *args[]) {
+    char* cmd_tail[] = args[PIPE_INDEX + 1];
+    args[PIPE_INDEX] = '\0';
+    char* cmd_head[] = args;
+
+    char *envp[] = { 0 };
+    int status;
+    int pid_head, pid_tail;
+    int fd[2];
+    if ((pid_head = fork()) == 0) {
+        dup2(fd[1], 1);
+        close(fd[0]);
+        execve(cmd_head[0], cmd_head, envp);
+    }
+
+    if ((pid_tail = fork()) == 0) {
+        dup2(fd[0], 0);
+        close(fd[1]);
+        execve(cmd_tail[0], cmd_tail, envp);
+    }
+
+    close(fd[0]);
+    close(fd[1]);
+
+    waitpid(pid_head, &status, 0);
+    waitpid(pid_tail, &status, 0);
+
+    return 1;
+}
+
+int  execute_command(char *args[]) {
+    if (current_control_flag == DEFAULT) {
+        return execute_vanilla_command(args);
+    }
+    if (current_control_flag == DO_OUT) {
+        return execute_do_out_command(args);
+    }
+    if (current_control_flag == DO_PIPE) {
+        return execute_do_pipe_command(args);
+    }
+    return 0;
 }
 
 void print_tokens(char tokens[max_args][max_line_length], int num_tokens) {

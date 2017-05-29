@@ -1,0 +1,6 @@
+total 68
+-rw------- 1 nickk nickk     0 May 28 18:07 out.txt
+-rwxrwxr-x 1 nickk nickk 18697 May 28 18:11 uvs
+-rw-rw-r-- 1 nickk nickk 13880 May 28 18:11 uvshr.c
+-rwxrwxr-x 1 nickk nickk 13608 May 27 16:26 uvsr
+-rwxrwxr-x 1 nickk nickk 13795 May 27 19:56 vs
