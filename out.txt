@@ -1,6 +1,21 @@
-total 68
--rw------- 1 nickk nickk     0 May 28 18:07 out.txt
--rwxrwxr-x 1 nickk nickk 18697 May 28 18:11 uvs
--rw-rw-r-- 1 nickk nickk 13880 May 28 18:11 uvshr.c
+o.txt
+out.txt
+out_five.txt
+out_six.txt
+out_two.txt
+pipe_ex.c
+test
+uvs
+uvshr.c
+uvsr
+vs
+wc
+wc.txt
+ 19:04 out.txt
+-rw-rw-r-- 1 nickk nickk  1839 May 28 18:53 pipe_ex.c
+-rwxrwxr-x 1 nickk nickk  8827 May 28 18:56 test
+-rwxrwxr-x 1 nickk nickk 18697 May 28 20:21 uvs
+-rw-rw-r-- 1 nickk nickk 13920 May 28 19:08 uvshr.c
 -rwxrwxr-x 1 nickk nickk 13608 May 27 16:26 uvsr
 -rwxrwxr-x 1 nickk nickk 13795 May 27 19:56 vs
+-rw------- 1 nickk nickk    56 May 28 19:09 wc.txt

@@ -92,23 +92,22 @@ int main() {
         num_tokens = tokenize_command_string(current_command_string, tokenized_string);//TODO: Make this an int functionring(current_command_string, tokenized_string);
 
         if (num_tokens > 0 && populate_exec_args(exec_args, tokenized_string, num_tokens) == 1) {
-            print_args(exec_args, num_tokens);
+         //   print_args(exec_args, num_tokens);
             command_type = check_command_type(exec_args);
             handle_command(exec_args, default_directories, command_type, num_directories);
         }
     }
 }
 
-/*printf("%d",
- *   The intention of this function is to handle the logic of getting to the right executable, and executing it.
+/* The intention of this function is to handle the logic of getting to the right executable, and executing it.
  *       @param args - array of arrays, each array is an arguement to the executable, with the first one being the name of the executeable itself.
  *       @param default_directories - default directories to look for a command in
  *       @param cmd_type - int value specifying how to determine where the executable is.
  *               see function 'check command type'.
  */
 void handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], int cmd_type, int num_dir)  {
-    printf("Dealing with command of type: %d.\n", cmd_type);
-    printf("Our pipe symbol is at location: %d.\n", PIPE_INDEX);
+    //printf("Dealing with command of type: %d.\n", cmd_type);
+   // printf("Our pipe symbol is at location: %d.\n", PIPE_INDEX);
 
 
     if (cmd_type == -1) {
@@ -122,7 +121,6 @@ void handle_command(char *args[max_args], char default_directories[max_directory
     }
 
     //local directory case
-    //TODO: test this one a bit more thoroughly, does seem to be fine tho.
     if (cmd_type == 1) {
         char completed_path[max_line_length];
         if (complete_local_path(args, completed_path) == 1) {
@@ -132,7 +130,6 @@ void handle_command(char *args[max_args], char default_directories[max_directory
     }
 
     //home '~' case.
-    //TODO: test this one a bit more thoroughly, does seem to be fine tho.
     if (cmd_type == 2) {
         char completed_path[max_line_length];
         if (complete_home_path(args, completed_path) == 1) {
@@ -285,7 +282,6 @@ int populate_exec_args(char** args, char tokens[max_args][max_line_length], int 
         args[i - start] = tokens[i];
         if (strcmp(args[i - start], "::") ==  0) {
             PIPE_INDEX = i - start;
-            printf("Set pipe_index to: %d\n", PIPE_INDEX);
         }
     }
     args[i] = '\0';
@@ -316,7 +312,6 @@ int validate_tokens(char tokens[max_args][max_line_length], int num_tokens) {
         printf("do-pipe or do-out specified, but no '::' symbol provided.\n");
         return 0;
     }
-    //TODO how many more cases lmao?
     return 1;
 }
 
@@ -365,6 +360,7 @@ int tokenize_command_string(char str[max_line_length], char tokenized[max_args][
 void print_args(char **args, int num_tokens) {
     int i;
     printf("\n====Printing Args:====\n");
+    printf("Index split at:%d\n", PIPE_INDEX); 
     for (i = 0; i < num_tokens; i++) {
         printf("ArgNo. %d||%s\n", i, args[i]);
     }
@@ -384,7 +380,7 @@ int execute_vanilla_command(char *args[]) {
 }
 
 //TODO: understand how this works.
-int execute_do_out_command(char *args[]) {;
+int execute_do_out_command(char *args[]) {
     char *envp[] = {0};
     int pid, fd;
     int status;
@@ -404,33 +400,8 @@ int execute_do_out_command(char *args[]) {;
 }
 
 int execute_do_pipe_command(char *args[]) {
-    char* cmd_tail[] = args[PIPE_INDEX + 1];
-    args[PIPE_INDEX] = '\0';
-    char* cmd_head[] = args;
-
-    char *envp[] = { 0 };
-    int status;
-    int pid_head, pid_tail;
-    int fd[2];
-    if ((pid_head = fork()) == 0) {
-        dup2(fd[1], 1);
-        close(fd[0]);
-        execve(cmd_head[0], cmd_head, envp);
-    }
-
-    if ((pid_tail = fork()) == 0) {
-        dup2(fd[0], 0);
-        close(fd[1]);
-        execve(cmd_tail[0], cmd_tail, envp);
-    }
-
-    close(fd[0]);
-    close(fd[1]);
-
-    waitpid(pid_head, &status, 0);
-    waitpid(pid_tail, &status, 0);
-
-    return 1;
+    printf("Not implemented yet");
+    return 0;
 }
 
 int  execute_command(char *args[]) {
