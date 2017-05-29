@@ -19,53 +19,78 @@
 #include <errno.h>
 #include <sys/wait.h>
 
-
 #define max_args 10 //well, 9, but we're tokenizing the command itself
 #define max_line_length 80
 #define max_prompt_length 10
 #define max_directory_len 10
 #define max_directory_string_len 100
 
-int load_prompt(FILE *fp, char prefix[10]);
-void init(char ccs[max_line_length], char ts[max_args][max_line_length]);
-int tokenize_command_string(char str[max_line_length], char tokenized[max_args][max_line_length]);
-void print_default_dirs(char default_directories[max_directory_len][max_directory_string_len], int count);
+
+/* File IO */
 int read_default_dirs(FILE *fp, char default_directories[max_directory_len][max_directory_string_len]);
-void print_tokens(char tokens[max_args][max_line_length], int num_tokens);
-int  execute_command(char **args);
-void populate_exec_args(char** args, char tokens[max_args][max_line_length], int num_tokens);
+int load_prompt(FILE *fp, char prefix[10]);
+
+/* Debugging print functions */
 void print_args(char **args, int num_tokens);
-int check_command_type(char* args[]);
+void print_default_dirs(char default_directories[max_directory_len][max_directory_string_len], int count);
+void print_tokens(char tokens[max_args][max_line_length], int num_tokens);
+
+/* String logic and house keeping */
+int validate_tokens(char tokens[max_args][max_line_length], int num_tokens);
+int populate_exec_args(char** args, char tokens[max_args][max_line_length], int num_tokens);
+int tokenize_command_string(char str[max_line_length], char tokenized[max_args][max_line_length]);
 void strip_newline(char current_command_string[max_line_length]);
-void handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], int cmd_type, int num_dir);
+void init(char ccs[max_line_length], char ts[max_args][max_line_length]);
+
+/* Command and directory logic */
 int find_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], char candidate_path[max_line_length], int num_dir);
+int check_command_type(char* args[]);
+int execute_command(char **args);
+int complete_local_path( char *args[max_args], char completed_path[max_line_length]);
+int complete_home_path(char *args[max_args], char completed_path[max_line_length]);
+void handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], int cmd_type, int num_dir);
 
 
+
+typedef enum {
+    DEFAULT,
+	DO_PIPE,
+    DO_OUT
+} control_flag;
+
+control_flag current_control_flag = DEFAULT;
+
+/*
+ * This is a nightmare, but we can remember where our cut is w/
+ *  a global variable
+ */
+int PIPE_INDEX = -1;
 
 int main() {
     FILE *fp;
-    fp = fopen(".uvshr", "r");
+    fp = fopen(".uvshr", "r"); //TODO: change this to the right name. Also close this file.
+
     char default_directories[max_directory_len][max_directory_string_len];
     char prompt[max_prompt_length];
-    int num_tokens;
-
     load_prompt(fp, prompt);
     int num_directories = read_default_dirs(fp, default_directories);
 
     char current_command_string[max_line_length];
     char tokenized_string[max_args][max_line_length];
-    char *exec_args[max_args]; //need both cuz reasons.
+    char *exec_args[max_args];
+
 	int command_type;
-    //main loop
+    int num_tokens;
+
     for(;;) {
         init(current_command_string, tokenized_string);
         printf("%s", prompt);
         fgets(current_command_string, max_line_length, stdin);
         strip_newline(current_command_string);
-        num_tokens = tokenize_command_string(current_command_string, tokenized_string);
-        populate_exec_args(exec_args, tokenized_string, num_tokens);
+        num_tokens = tokenize_command_string(current_command_string, tokenized_string);//TODO: Make this an int functionring(current_command_string, tokenized_string);
 
-        if (num_tokens > 0) {
+        if (num_tokens > 0 && populate_exec_args(exec_args, tokenized_string, num_tokens) == 1) {
+            print_args(exec_args, num_tokens);
             command_type = check_command_type(exec_args);
             handle_command(exec_args, default_directories, command_type, num_directories);
         }
@@ -73,46 +98,101 @@ int main() {
 }
 
 /*
- *   The intention of this function is to handle the 'logic' of getting to the right executable, and executing it.
- *       @param args - array of arrays.
+ *   The intention of this function is to handle the logic of getting to the right executable, and executing it.
+ *       @param args - array of arrays, each array is an arguement to the executable, with the first one being the name of the executeable itself.
  *       @param default_directories - default directories to look for a command in
  *       @param cmd_type - int value specifying how to determine where the executable is.
  *               see function 'check command type'.
- *
  */
 void handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], int cmd_type, int num_dir)  {
-   // printf("In handle command. CMD TYPE: %d", cmd_type);
-    if (cmd_type == 0) { //args holds an absolute path.
+    printf("Dealing with command of type: %d.\n", cmd_type);
+    printf("Our pipe symbol is at location: %d.\n", PIPE_INDEX);
+
+
+
+    if (cmd_type == -1) {
+        exit(EXIT_SUCCESS);
+    }
+
+    //abs path case
+    if (cmd_type == 0) {
         execute_command(args);
         return;
     }
 
+    //local directory case
+    //TODO: test this one a bit more thoroughly, does seem to be fine tho.
+    if (cmd_type == 1) {
+        char completed_path[max_line_length];
+        if (complete_local_path(args, completed_path) == 1) {
+            execute_command(args);
+            return;
+        }
+    }
+
+    //home '~' case.
+    //TODO: test this one a bit more thoroughly, does seem to be fine tho.
+    if (cmd_type == 2) {
+        char completed_path[max_line_length];
+        if (complete_home_path(args, completed_path) == 1) {
+            execute_command(args);
+            return;
+        }
+    }
+
+    //inferred path case (look in directories)
     if (cmd_type == 3) {
         char candidate_path[max_line_length];
         if (find_command(args, default_directories, candidate_path, num_dir) == 1) {
             execute_command(args);
+            return;
         }
     }
 }
 
-int find_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], char candidate_path[max_line_length], int num_dir) {
+/*
+ * modify args to have a complete path.
+ */
+int complete_home_path(char *args[max_args], char completed_path[max_line_length]) {
     int i;
+    for (i = 0; i < max_line_length; i++) {
+        completed_path[i] = '\0';
+    }
+    strcpy(completed_path, getenv("HOME"));
+    strcat(completed_path, args[0] + 1); // +1 to remove the tilde
 
+    args[0] = completed_path;
+    return 1;
+}
+
+/*
+ * Given a local path, ie starting with a '.', complete it by getting the CWD and executing an absolute path
+ */
+int complete_local_path(char *args[max_args], char completed_path[max_line_length]) {
+    int i;
+    for (i = 0; i < max_line_length; i++) {
+        completed_path[i] = '\0';
+    }
+    getcwd(completed_path, max_line_length);
+    strcat(completed_path, args[0] + 1); // + 1 to skip the dot
+    args[0] = completed_path;
+    return 1;
+}
+
+int find_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], char candidate_path[max_line_length], int num_dir) {
     char target_command[max_line_length];
-
+    int i;
     for (i = 0; i < max_line_length; i++) {
         candidate_path[i] = '\0';
         target_command[i] = '\0';
     }
+
     strcpy(target_command, "/");
     strcat(target_command, args[0]);
-
 
     for (i = 0; i < num_dir; i++) {
         strcpy(candidate_path, default_directories[i]);
         strcat(candidate_path, target_command);
-
-
         if (access(candidate_path, X_OK) != -1) {
             args[0] = candidate_path;
             return 1;
@@ -144,6 +224,9 @@ int find_command(char *args[max_args], char default_directories[max_directory_le
  *           3 if it's the name of an executable only (use default directories)
  */
 int check_command_type(char* args[]) {
+    if (strcmp(args[0], "exit") == 0)
+        return -1;
+
     if (*args[0] == '/') {
         return 0;
     }  else  if (args[0][0] == '.') {
@@ -174,32 +257,72 @@ int read_default_dirs(FILE *fp, char default_directories[max_directory_len][max_
             default_directories[i][j] = '\0';
         }
     }
-    int count = 0;
 
+    int count = 0;
     while(fgets(default_directories[count], max_directory_string_len, fp) != NULL) {
         strip_newline(default_directories[count++]);
     }
-    //print_default_dirs(default_directories, count);
     return count;
 }
 
-void populate_exec_args(char** args, char tokens[max_args][max_line_length], int num_tokens) {
-    int i;
-    for (i = 0; i < num_tokens; i++) {
-        args[i] = tokens[i];
+int populate_exec_args(char** args, char tokens[max_args][max_line_length], int num_tokens) {
+    int i, start;
+    if (strcmp(tokens[0], "do-pipe") == 0) {
+        current_control_flag = DO_PIPE;
+        start = 1;
+    } else if (strcmp(tokens[0], "do-out")  == 0) {
+        current_control_flag = DO_OUT;
+        start = 1;
+    } else {
+        current_control_flag = DEFAULT;
+        start = 0;
+    }
+    if (validate_tokens(tokens, num_tokens) == 0) {
+        return 0;
+    }
+    for (i = start; i < num_tokens; i++) {
+        args[i - start] = tokens[i];
+        if (strcmp(args[i - start], "::") ==  0) {
+            PIPE_INDEX = i - start;
+            printf("Set pipe_index to: %d\n", PIPE_INDEX);
+        }
     }
     args[i] = '\0';
-
-    /*
-    printf("Printing string.\n");
-    for (i = 0; i < num_tokens; i++) {
-        printf("%s", args[i]);
-        printf("\n");
-    } */
+    return 1;
 }
+
+int validate_tokens(char tokens[max_args][max_line_length], int num_tokens) {
+    int i;
+    int seen_pipe_symbol = 0;
+    for (i = 0; i < num_tokens; i++) {
+        if (strcmp(tokens[i], "::") == 0) {
+            seen_pipe_symbol += 1;
+        }
+    }
+    if (seen_pipe_symbol == 1 && current_control_flag == DEFAULT) {
+        printf("Pipe not specified and encountered '::' token.\n");
+        return 0;
+    }
+    if (strcmp(tokens[i  - 1], "::") == 0) {
+        printf("Encountered '::' symbol, but no target provided\n");
+        return 0;
+    }
+    if (seen_pipe_symbol > 1) {
+        printf("Nested pipes not supported.\n");
+        return 0;
+    }
+    if (seen_pipe_symbol == 0 && (current_control_flag == DO_PIPE || current_control_flag == DO_OUT)) {
+        printf("do-pipe or do-out specified, but no '::' symbol provided.\n");
+        return 0;
+    }
+    //TODO how many more cases lmao?
+    return 1;
+}
+
 
 void init(char ccs[max_line_length], char ts[max_args][max_line_length]) {
     int i, j;
+    PIPE_INDEX = -1;
     for (i = 0; i < max_line_length; i++) {
         ccs[i] = '\0';
     }
@@ -241,34 +364,34 @@ int tokenize_command_string(char str[max_line_length], char tokenized[max_args][
 
 void print_args(char **args, int num_tokens) {
     int i;
-    printf("First arg is: \n%s\n", args[0]);
-    printf("First arg is: \n%s\n", args[0]);
-    printf("====Printing Arguements:====\n");
+    printf("\n====Printing Args:====\n");
     for (i = 0; i < num_tokens; i++) {
-        printf("ArgNo. %d:%s\n", i, args[i]);
+        printf("ArgNo. %d||%s\n", i, args[i]);
     }
-    printf("First arg still us: \n%s\n", args[0]);
-    printf("---done-----\n");
+    printf("============DONE========\n");
 }
 
-int  execute_command(char *args[]) {
+int execute_vanilla_command(char *args[]) {
     pid_t pid;
     int status;
-    //print_args(args, num_tokens);
+    //print_args(args, 1);
     char *envp[] = {0};
     //char *test_args[] = {"/bin/ls", "-l", 0};
 
     if ((pid = fork()) == 0) {
         printf("%d", execve(args[0], args, envp));
-        printf("This is the child now..");
         exit(EXIT_FAILURE);
     }
-
+    //printf("Waiting for child..");
     while (wait(&status) > 0) {
-     //   printf("Was maybe a success.");
+        //printf("Was maybe a success.");
     }
 
     return 0;
+}
+
+int  execute_command(char *args[]) {
+
 }
 
 void print_tokens(char tokens[max_args][max_line_length], int num_tokens) {
