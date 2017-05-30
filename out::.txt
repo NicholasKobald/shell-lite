@@ -1,6 +1,0 @@
-total 60
--rw------- 1 nickk nickk     0 May 29 13:55 out::.txt
--rw------- 1 nickk nickk   211 May 29 13:42 out.txt
--rwxrwxr-x 1 nickk nickk 18842 May 29 13:55 uvs
--rwxrwxr-x 1 nickk nickk 18842 May 28 22:30 uvshr
--rw-rw-r-- 1 nickk nickk 14342 May 29 13:55 uvshr.c

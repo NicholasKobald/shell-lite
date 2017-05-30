@@ -46,12 +46,13 @@ void normalize_space(char current_command_string[max_line_length]);
 void init(char ccs[max_line_length], char ts[max_args][max_line_length]);
 
 /* Command and directory logic */
+int check_path(char *arg[]);
 int find_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], char candidate_path[max_line_length], int num_dir);
 int check_command_type(char* args[]);
 int execute_command(char **args);
 int complete_local_path( char *args[max_args], char completed_path[max_line_length]);
 int complete_home_path(char *args[max_args], char completed_path[max_line_length]);
-void handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], char completed_path[max_line_length],  int cmd_type, int num_dir);
+int handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], char completed_path[max_line_length],  int cmd_type, int num_dir);
 
 int execute_vanilla_command(char *args[]);
 int execute_do_out_command(char *args[]);
@@ -65,9 +66,14 @@ typedef enum {
 
 control_flag current_control_flag = DEFAULT;
 
+/*
+ * if control flag is none-default, pipe_index will be the Index
+ * of the '::' symbol. Otherwise, pipe_index will be -1.
+ */
 int PIPE_INDEX = -1;
 
 extern char **environ;
+
 int main() {
     FILE *fp;
     fp = fopen(".uvshrc", "r"); //TODO: change this to the right name. Also close this file.
@@ -85,6 +91,8 @@ int main() {
 
 	int command_type;
     int num_tokens;
+    int valid = 0;
+    int valid_pipe_command = 0;
 
     for (;;) {
         current_control_flag = DEFAULT;
@@ -96,12 +104,13 @@ int main() {
 
         if (num_tokens > 0 && populate_exec_args(exec_args, tokenized_string, num_tokens) == 1) {
             command_type = check_command_type(exec_args);
-            handle_command(exec_args, default_directories, completed_path,  command_type, num_directories);
-            if (current_control_flag != DEFAULT) {
+            valid = handle_command(exec_args, default_directories, completed_path,  command_type, num_directories);
+            if (current_control_flag == DO_PIPE) {
                 command_type = check_command_type(&exec_args[PIPE_INDEX + 1]);
-                handle_command(&exec_args[PIPE_INDEX + 1], default_directories, completed_path_target, command_type,  num_directories);
+                valid_pipe_command = handle_command(&exec_args[PIPE_INDEX + 1], default_directories, completed_path_target, command_type, num_directories);
             }
-            execute_command(exec_args);
+            if (valid == 1 && (current_control_flag != DO_PIPE || valid_pipe_command == 1))
+                execute_command(exec_args);
         }
     }
 }
@@ -117,61 +126,69 @@ uements
  *  @side effect:
  *          WILL EXIT PROGRAM IF VALUE OF CMD IS -1
  */
-void handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], char completed_path[max_line_length], int cmd_type, int num_dir)  {
-    if (cmd_type == -1) {
+int handle_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], char completed_path[max_line_length], int cmd_type, int num_dir)  {
+    int i;
+    int ret_val = 0;
+    for (i = 0; i < max_line_length; i++) {
+        completed_path[i] = '\0';
+    }
+    if (cmd_type == -1)
         exit(EXIT_SUCCESS);
-    }
+
     //abs path case
-    if (cmd_type == 0) {
-        return;
-    }
+    if (cmd_type == 0)
+        ret_val = check_path(args);
+
     //local directory case
-    if (cmd_type == 1) {
-        if (complete_local_path(args, completed_path) == 1) {
-            return;
-        }
-    }
+    if (cmd_type == 1)
+        ret_val = complete_local_path(args, completed_path);
+
     //home '~' case.
-    if (cmd_type == 2) {
-        if (complete_home_path(args, completed_path) == 1) {
-            return;
-        }
-    }
+    if (cmd_type == 2)
+        ret_val = complete_home_path(args, completed_path);
+
     //inferred path case (look in directories)
-    if (cmd_type == 3) {
-        if (find_command(args, default_directories, completed_path, num_dir) == 1) {
-            return;
-        }
+    if (cmd_type == 3)
+        ret_val = find_command(args, default_directories, completed_path, num_dir);
+
+    if (ret_val == 0) {
+        fprintf(stderr, "%s: command not found\n", args[0]);
+        return ret_val;
     }
+    return ret_val;
+}
+
+int check_path(char *args[]) {
+    if (access(args[0], X_OK) != -1) {
+        return 1;
+    }
+    return 0;
 }
 
 /*
  * modify args to have a complete path.
  */
 int complete_home_path(char *args[max_args], char completed_path[max_line_length]) {
-    int i;
-    for (i = 0; i < max_line_length; i++) {
-        completed_path[i] = '\0';
-    }
     strcpy(completed_path, getenv("HOME"));
     strcat(completed_path, args[0] + 1); // +1 to remove the tilde
-
-    args[0] = completed_path;
-    return 1;
+    if (access(completed_path, X_OK) != -1) {
+        args[0] = completed_path;
+        return 1;
+    }
+    return 0;
 }
 
 /*
  * Given a local path, ie starting with a '.', complete it by getting the CWD and executing an absolute path
  */
 int complete_local_path(char *args[max_args], char completed_path[max_line_length]) {
-    int i;
-    for (i = 0; i < max_line_length; i++) {
-        completed_path[i] = '\0';
-    }
     getcwd(completed_path, max_line_length);
     strcat(completed_path, args[0] + 1); // + 1 to skip the dot
-    args[0] = completed_path;
-    return 1;
+    if (access(completed_path, X_OK) != -1) {
+        args[0] = completed_path;
+        return 1;
+    }
+    return 0;
 }
 
 int find_command(char *args[max_args], char default_directories[max_directory_len][max_directory_string_len], char candidate_path[max_line_length], int num_dir) {
@@ -205,7 +222,6 @@ void dump_searched_in(char *args[max_args], char default_directories[max_directo
         strcat(candidate_path, target_command);
         fprintf(stderr, "Searched for: %s\n", candidate_path);
     }
-    fprintf(stderr, "%s: command not found\n", args[0]);
     return;
 }
 
@@ -391,34 +407,54 @@ void print_args(char **args, int num_tokens) {
     printf("============DONE========\n");
 }
 
+/*
+    this function is heavily influenced by examples provided
+    for this assignment written by Mike Zastre
+*/
 int execute_vanilla_command(char *args[]) {
     pid_t pid;
     int status;
     if ((pid = fork()) == 0) {
-        execve(args[0], args, environ);
+        if (execve(args[0], args, environ) < 0) {
+            fprintf(stderr, "\t Err. Exec failed when run on %s.\n", args[0]);
+        }
+    } else if (pid < 0) {
+        fprintf(stderr, "\t Err. Failed to spawn child process %s.\n", args[0]);
     }
     wait(&status);
     return 0;
 }
 
+/*
+    this function is heavily influenced by examples provided
+    for this assignment written by Mike Zastre
+*/
 int execute_do_out_command(char *args[]) {
     int pid, fd;
     int status;
     if ((pid = fork()) == 0) {
         fd = open(args[PIPE_INDEX + 1] , O_CREAT|O_RDWR|O_TRUNC, S_IRUSR|S_IWUSR);
         if (fd == -1) {
-            fprintf(stderr, "Unable to open %s for writing.\n", args[PIPE_INDEX + 1]);
+            fprintf(stderr, "\t Err. Unable to open %s for writing.\n", args[PIPE_INDEX + 1]);
             return 0;
         }
         dup2(fd, 1);
         dup2(fd, 2);
         args[PIPE_INDEX] = '\0';
-        execve(args[0], args, environ);
+        if (execve(args[0], args, environ) < 0) {
+            fprintf(stderr, "\t Err. Exec failed on child process %s.\n", args[0]);
+        }
+    } else if (pid < 0) {
+        fprintf(stderr, "\t Err. Failed to spawn child process %s.\n", args[0]);
     }
     waitpid(pid, &status, 0);
     return 1;
 }
 
+/*
+    this function is heavily influenced by examples provided
+    by example code posted by Mike Zastre
+*/
 int execute_do_pipe_command(char *args[]) {
     args[PIPE_INDEX] = '\0';
 
@@ -430,13 +466,21 @@ int execute_do_pipe_command(char *args[]) {
     if ((pid_head = fork()) == 0) {
         dup2(fd[1], 1);
         close(fd[0]);
-        execve(args[0], args, environ);
+        if (execve(args[0], args, environ) < 0) {
+            fprintf(stderr, "\t Err. Exec failed on proccess: %s.\n", args[0]);
+        }
+    } else if (pid_head < 0) {
+        fprintf(stderr, "\t Err. Failed to launch process %s.\n", args[0]);
     }
 
     if ((pid_tail = fork()) == 0) {
         dup2(fd[0], 0);
         close(fd[1]);
-        execve(args[PIPE_INDEX + 1], &args[PIPE_INDEX + 1], environ);
+        if (execve(args[PIPE_INDEX + 1], &args[PIPE_INDEX + 1], environ) < 0) {
+            fprintf(stderr, "\t Err. Failed on process %s.\n", args[PIPE_INDEX + 1]);
+        }
+    } else if (pid_head < 0) {
+        fprintf(stderr, "\t Err.  Failed to launch process %s.\n", args[PIPE_INDEX + 1]);
     }
 
     close(fd[0]);

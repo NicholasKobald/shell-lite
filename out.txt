@@ -1,5 +1,8 @@
-total 56
--rw------- 1 nickk nickk     0 May 29 13:42 out.txt
--rwxrwxr-x 1 nickk nickk 18842 May 29 13:42 uvs
+total 96
+-rwxrwxr-x 1 nickk nickk 18975 May 29 17:10 a.out
+-rw------- 1 nickk nickk    12 May 29 21:10 out_two.txt
+-rw------- 1 nickk nickk     0 May 29 21:11 out.txt
+-rwxrwxr-x 1 nickk nickk 19086 May 29 21:03 uvs
 -rwxrwxr-x 1 nickk nickk 18842 May 28 22:30 uvshr
--rw-rw-r-- 1 nickk nickk 14179 May 29 13:40 uvshr.c
+-rw-rw-r-- 1 nickk nickk 16228 May 29 21:05 uvshr.c
+-rwxrwxr-x 1 nickk nickk 19086 May 29 21:05 uvs_two
