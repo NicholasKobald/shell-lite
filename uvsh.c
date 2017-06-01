@@ -4,9 +4,7 @@
 * @Email:  nick.kobald@gmail.com
 *
 * TODO:
-*      -NEXT: Fix filenames (including .uvsrc)
-*      -need to be printing error to stderr
-*      -all my execute_command functions need to do some error checking
+*      -any way around race condition?
 *      -extra work??
 *           background process?
 */
@@ -101,6 +99,8 @@ int main() {
         fgets(current_command_string, max_line_length, stdin);
         normalize_space(current_command_string);
         num_tokens = tokenize_command_string(current_command_string, tokenized_string);
+        //printf("%d\n", num_tokens);
+        //printf("%s\n", current_command_string);
 
         if (num_tokens > 0 && populate_exec_args(exec_args, tokenized_string, num_tokens) == 1) {
             command_type = check_command_type(exec_args);
@@ -369,6 +369,9 @@ void init(char ccs[max_line_length], char ts[max_args][max_line_length]) {
 }
 
 int tokenize_command_string(char str[max_line_length], char tokenized[max_args][max_line_length]) {
+    if (str[0] == '\0')
+        return 0;
+        
     int i;
     int count = 0;
     int last_none_space_index = 0;
@@ -384,7 +387,7 @@ int tokenize_command_string(char str[max_line_length], char tokenized[max_args][
     int current_token = 0;
     int j = 0;
     char null_term = '\0';
-    for (i = 0; i < last_none_space_index; i++) {
+    for (i = 0; i < last_none_space_index + 1; i++) {
         j = 0;
         while (str[i] != ' ' && str[i] != '\0') {
             strcpy(&tokenized[current_token][j], &str[i]);
@@ -392,6 +395,7 @@ int tokenize_command_string(char str[max_line_length], char tokenized[max_args][
             i++;
       }
         strcpy(&tokenized[current_token][j], &null_term);
+        //printf("Should inc...\n");
         current_token++;
     }
     return current_token;
